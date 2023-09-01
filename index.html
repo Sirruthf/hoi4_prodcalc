@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>War time production calculator</title>
+    </head>
+    
+    <style>
+        
+        body {
+            height: 100%;
+        }
+        
+        .main {
+            display: flex;
+            height: 100%;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .source, .range_group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .init {
+            width: 40px;
+        }
+        
+        th:first-child {
+            text-align: left;
+        }
+        
+    </style>
+    
+    <body>
+        <main class="main">
+            <div class="content">
+                <canvas class="canvas" width="720" height="400"></canvas>
+                <div class="source">
+                    <span class="title">Initial Conditions</span>
+                    <div class="initial_group">
+                        <label><input value="30" class="init civ_qnt" type="number"> Civs</label><br>
+                        <label><input value="10" class="init mil_qnt" type="number"> Mils</label><br>
+                        <label><input value="100" class="init mult1" type="number">% Civ Multiplier</label><br>
+                        <label><input value="100" class="init mult2" type="number">% Mil Multiplier</label><br>
+                        <label><input value="35" class="init mult3" type="number">% Consumer goods</label>
+                    </div>
+                    <span class="title">Time of the shift</span>
+                    <div class="range_group">
+                        <span><span class="from">1.1.1936</span><input type="range" min="0" max="72" value="36" class="tt"><input type="date" class="to" value="1942-01-01"></span>
+                        <span class="current">1.1.1939</span>
+                    </div>
+                </div>
+                <div class="result">
+                    <table class="result_table">
+                        <tr><th class="due">on 1942.1.1</th>              <th>w/Shift</th>     <th>w/o Shift</th> </tr>
+                        <tr><th>Civs</th>                  <td class="sc"></td>  <td class="nc"></td> </tr>
+                        <tr><th>Mils</th>                  <td class="sm"></td>  <td class="nm"></td> </tr>
+                        <tr><th>Built</th>                 <td class="sb"></td>  <td class="nb"></td> </tr>
+                        <tr><th>Produced, p/u</th>         <td class="sp"></td>  <td class="np"></td> </tr>
+                    </table>
+                </div>
+            </div>
+        </main>
+        
+        <script type="module">
+        
+            import q from '/projects/for_short.js';
+            
+            
+            const MIL_COST = 7200;
+            const CIV_COST = 10800;
+            const START_DATE = new Date(1936, 0, 1);
+            const START_YEAR = 1936;
+            const CIV_OUTPUT = 5;
+            const MIL_OUTPUT = 4.5;
+            
+            let max_shift = 72;
+            let range = q(".tt");
+            let curre = q(".current");
+            let table = getem([
+                ".sc", ".nc", ".sm", ".nm",
+                ".sb", ".sp", ".nb", ".np"
+                ]);
+                
+            let civ_qnt = q(".civ_qnt"),
+                mil_qnt = q(".mil_qnt"),
+                mult1 = q(".mult1"),
+                mult2 = q(".mult2"),
+                mult3 = q(".mult3"),
+                to = q(".to"),
+                due = q(".due");
+            
+            range.on("input", () => {
+                curre.textContent = shiftToString(range.value);
+                
+                update();
+            });
+            
+            to.on("input", update)
+            civ_qnt.on("input", update);
+            mil_qnt.on("input", update);
+            mult1.on("input", update);
+            mult2.on("input", update);
+            mult3.on("input", update);
+            
+            update();
+            
+            function drawGraph (current = 0) {
+                const GRAPH_OVERHEAD_MULT = 1.2;
+                
+                let canvas = q(".canvas");
+                let context = canvas.getContext('2d');
+                
+                const WIDTH = 720, HEIGHT = 400;
+                context.clearRect(0, 0, WIDTH, HEIGHT);
+                
+                context.beginPath();
+                context.setLineDash([]);
+                context.moveTo(0, 0);
+                context.lineTo(0, HEIGHT);
+                context.moveTo(0, HEIGHT - 40);
+                context.lineTo(WIDTH, HEIGHT - 40);
+                context.stroke();
+                
+                let values = [];
+                let max_prod = 0;
+                let max_mils = 0;
+                
+                for (let i = 0; i <= max_shift; i++) {
+                    let calcs = calculateShift(
+                        parseInt(civ_qnt.value),
+                        parseInt(mil_qnt.value),
+                        parseInt(mult1.value),
+                        parseInt(mult2.value),
+                        parseInt(mult3.value),
+                        inputToDate(to.value),
+                        shiftToDate(i)
+                    );
+                    
+                    values[i] = calcs;
+                    if (values[i][3] > max_prod) max_prod = values[i][3];
+                    if (values[i][1] > max_mils) max_mils = values[i][1]
+                }
+                
+                const fraction_prod = max_prod * GRAPH_OVERHEAD_MULT / HEIGHT;
+                const fraction_mils = max_mils * GRAPH_OVERHEAD_MULT / HEIGHT;
+                
+                context.beginPath();
+                context.strokeStyle = "#33bb33";
+                
+                for (let i = 0; i <= max_shift; i++) {
+                    context.lineTo(WIDTH / max_shift * i, HEIGHT - 40 - values[i][1] / fraction_mils);
+                    context.stroke();
+                }
+                
+                context.beginPath();
+                context.strokeStyle = "#000000";
+
+                for (let i = 0; i <= max_shift; i++) {
+                    context.lineTo(WIDTH / max_shift * i, HEIGHT - 40 - values[i][3] / fraction_prod);
+                    
+                    if (i % 6 == 0) context.strokeText(shiftToString(i), i * WIDTH / max_shift, HEIGHT - 20);
+                    context.stroke();
+                }
+                
+                context.setLineDash([5, 15]);
+                context.moveTo(current * WIDTH / max_shift, 0);
+                context.lineTo(current * WIDTH / max_shift, HEIGHT - 40);
+                context.moveTo(0, HEIGHT - 40 - values[current][3] / fraction_prod);
+                context.lineTo(WIDTH, HEIGHT - 40 - values[current][3] / fraction_prod);
+                context.stroke();
+            }
+            
+            function shiftToDate (shift) {
+                shift = parseInt(shift);
+                return new Date(START_YEAR + Math.floor(shift / 12), shift % 12, 1);
+            }
+            
+            function inputToDate (value) {
+                let split = value.split("-");
+                return new Date(split[0], split[1] - 1, split[2]);
+            }
+            
+            function shiftToString (shift) {
+                return (START_YEAR + Math.floor(shift / 12)) + "." + (shift % 12 + 1) + ".1"
+            }
+            
+            function timespanToDays (span) {
+                return span / (1000 * 3600 * 24);
+            }
+            
+            function dueDateToShift (year, month) {
+                return (year - START_DATE.getFullYear()) * 12 + (month - START_DATE.getMonth())
+            }
+            
+            function update () {
+                
+                let result = {};
+                
+                [
+                    result[".nc"],
+                    result[".nm"],
+                    result[".nb"],
+                    result[".np"]
+                ] = calculateShift(parseInt(civ_qnt.value), parseInt(mil_qnt.value), parseInt(mult1.value), parseInt(mult2.value), parseInt(mult3.value), inputToDate(to.value), shiftToDate(0), true);
+                
+                [
+                    result[".sc"],
+                    result[".sm"],
+                    result[".sb"],
+                    result[".sp"]
+                ] = calculateShift(parseInt(civ_qnt.value), parseInt(mil_qnt.value), parseInt(mult1.value), parseInt(mult2.value), parseInt(mult3.value), inputToDate(to.value), shiftToDate(range.value));
+                
+                for (let key in result) {
+                    table[key].textContent = result[key];
+                }
+                
+                let date = to.value.split("-");
+                
+                due.textContent = "on " + date.join(".");
+                max_shift = range.max = dueDateToShift(date[0], date[1] - 1);
+                
+                drawGraph(range.value);
+            }
+            
+            function calculateShift (civ_quantity, mil_quantity, civ_mult, mil_mult, civ_reserved, due_date, shift_date) {
+                
+                let totalDays = timespanToDays(due_date - START_DATE);
+                let shiftDays = timespanToDays(shift_date - START_DATE);
+                
+                let preShift = calculateCivs(civ_quantity, mil_quantity, civ_mult, civ_reserved, shiftDays);
+                let postShift = calculateMils(preShift[0], mil_quantity, mil_mult, civ_reserved, totalDays - shiftDays);
+                
+                return [
+                    preShift[0],
+                    postShift[0],
+                    preShift[1] + postShift[1],
+                    preShift[2] + postShift[2]
+                ];
+            }
+            
+            function calculateCivs (civ_quantity, mil_quantity, civ_mult, civ_reserved, total_days) {
+                let civQuantity = civ_quantity;
+                let totalBuild = 0;
+                let totalProd = MIL_OUTPUT * (total_days * mil_quantity);
+                
+                for (let day = 0; day < total_days; civQuantity++) {
+                    let effQuantity = Math.max(civQuantity - (civQuantity + mil_quantity) * civ_reserved / 100, 0) * civ_mult / 100;
+                    let next = Math.round(CIV_COST / (CIV_OUTPUT * effQuantity));
+                    day += next;
+                    
+                    if (day > total_days) break;
+                    
+                    totalBuild += CIV_COST;
+                }
+                
+                return [civQuantity, totalBuild, totalProd];
+            }
+            
+            function calculateMils (civ_quantity, mil_quantity, mil_mult, civ_reserved, total_days, log) {
+                let milQuantity = mil_quantity;
+                let totalBuild = 0;
+                let totalProd = MIL_OUTPUT * (total_days * mil_quantity);
+                
+                for (let day = 0; day < total_days; milQuantity++) {
+                    let effQuantity = Math.max(civ_quantity - (civ_quantity + milQuantity) * civ_reserved / 100, 0) * mil_mult / 100;
+                    let next = Math.round(MIL_COST / (CIV_OUTPUT * effQuantity));
+                    day += next;
+                    
+                    if (day > total_days) break;
+                    
+                    totalBuild += MIL_COST;
+                    totalProd += MIL_OUTPUT * (total_days - day);
+                }
+                
+                return [milQuantity, totalBuild, totalProd]
+            }
+            
+            function getem (names) {
+                let result = {};
+                
+                for (let name of names) {
+                    result[name] = q(name);
+                }
+                
+                return result;
+            }
+            
+        </script>
+    </body>
+</html>
